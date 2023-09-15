@@ -1,47 +1,54 @@
-name: IAM Scan
+import os
+import boto3
+from tabulate import tabulate
 
-on:
-  workflow_dispatch:
-    branches:
-      - main
+aws_access_key_id = os.environ["AWS_ACCESS_KEY_ID"]
+aws_secret_access_key = os.environ["AWS_SECRET_ACCESS_KEY"]
+aws_region = os.environ["AWS_REGION"]
 
-jobs:
-  iam_scan:
-    runs-on: ubuntu-latest
+# Function to print data in a tabular format
+def print_data(data, headers):
+    if data:
+        print(tabulate(data, headers=headers, tablefmt="grid"))
+    else:
+        print("No data to display.")
 
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v2
+try:
+    # Create a Boto3 IAM client with the provided credentials and region
+    iam = boto3.client('iam', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key, region_name=aws_region)
 
-    - name: Set Up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'  # Specify the desired Python version
+    # First Scan: List all IAM users
+    first_scan_response = iam.list_users()
+    first_scan_data = []
 
-    - name: Install Dependencies
-      run: |
-        pip install boto3 tabulate
-      shell: bash
+    for user in first_scan_response['Users']:
+        username = user['UserName']
+        access_keys = iam.list_access_keys(UserName=username)['AccessKeyMetadata']
+        last_activity = max(key['CreateDate'] for key in access_keys) if access_keys else "N/A"
+        creation_time = user['CreateDate'].strftime('%Y-%m-%d %H:%M:%S')
+        first_scan_data.append([username, last_activity, creation_time])
 
-    - name: Run IAM Scanner
-      run: |
-        python iam_scanner.py
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
+    # Print the first scan results
+    print("First scan results:")
+    print_data(first_scan_data, headers=["Username", "Last Activity", "Creation Time"])
 
-    - name: Save Results
-      run: |
-        mv first_scan_results.txt ../
-        mv second_scan_results.txt ../
-      shell: bash
+    # Prompt for permission to perform the second scan
+    input("Press Enter to perform the second scan...")
 
-    - name: Commit and Push Results
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add ../first_scan_results.txt ../second_scan_results.txt
-        git diff-index --quiet HEAD || (git commit -a -m "Update scan results" --allow-empty && git push)
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # Second Scan: List all IAM users again
+    second_scan_response = iam.list_users()
+    second_scan_data = []
+
+    for user in second_scan_response['Users']:
+        username = user['UserName']
+        access_keys = iam.list_access_keys(UserName=username)['AccessKeyMetadata']
+        last_activity = max(key['CreateDate'] for key in access_keys) if access_keys else "N/A"
+        creation_time = user['CreateDate'].strftime('%Y-%m-%d %H:%M:%S')
+        second_scan_data.append([username, last_activity, creation_time])
+
+    # Print the second scan results
+    print("Second scan results:")
+    print_data(second_scan_data, headers=["Username", "Last Activity", "Creation Time"])
+
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
