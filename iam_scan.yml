@@ -1,0 +1,47 @@
+name: IAM Scan
+
+on:
+  workflow_dispatch:
+    branches:
+      - main
+
+jobs:
+  iam_scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+
+    - name: Set Up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'  # Specify the desired Python version
+
+    - name: Install Dependencies
+      run: |
+        pip install boto3 tabulate
+      shell: bash
+
+    - name: Run IAM Scanner
+      run: |
+        python iam_scanner.py
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+
+    - name: Save Results
+      run: |
+        mv first_scan_results.txt ../
+        mv second_scan_results.txt ../
+      shell: bash
+
+    - name: Commit and Push Results
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add ../first_scan_results.txt ../second_scan_results.txt
+        git diff-index --quiet HEAD || (git commit -a -m "Update scan results" --allow-empty && git push)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
